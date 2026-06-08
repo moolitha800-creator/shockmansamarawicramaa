@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>S & S [PVT] LTD - Auction Search</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="background-circles">
+        <div class="circle circle-1"></div>
+        <div class="circle circle-2"></div>
+        <div class="circle circle-3"></div>
+    </div>
+
+    <div class="container fade-in">
+        <header class="header">
+            <div class="logo-container">
+                <img src="assets/logo.png" alt="S & S [PVT] LTD Logo" class="logo" id="logo-img" onerror="this.src='https://via.placeholder.com/150?text=S%26S+Logo';">
+            </div>
+            <h1>Vehicle Auction Brokerage</h1>
+            <p>Find auction details by Applicant ID</p>
+        </header>
+
+        <div class="search-section glass-panel">
+            <form id="search-form">
+                <div class="input-group">
+                    <input type="text" id="applicant-id" placeholder="Enter Applicant ID (e.g., 901234567V)" required autocomplete="off">
+                    <button type="submit" class="btn-primary">Search</button>
+                </div>
+            </form>
+            <div id="loading" class="hidden">
+                <div class="spinner"></div>
+            </div>
+            <div id="error-message" class="error hidden"></div>
+        </div>
+
+        <div id="results-section" class="results-section glass-panel hidden">
+            <h2 class="results-title">Auction Details</h2>
+            <div class="vehicle-image-container" style="text-align: center; margin-bottom: 2rem;">
+                <img id="res-vehicle-img" src="" alt="Vehicle Photo" style="max-width: 100%; height: auto; max-height: 300px; border-radius: 12px; display: none; box-shadow: 0 5px 15px rgba(0,0,0,0.5);">
+            </div>
+            <div class="details-grid">
+                <div class="detail-item">
+                    <span class="label">Name</span>
+                    <span class="value" id="res-name"></span>
+                </div>
+                <div class="detail-item">
+                    <span class="label">Address</span>
+                    <span class="value" id="res-address"></span>
+                </div>
+                <div class="detail-item">
+                    <span class="label">Refundable Deposit</span>
+                    <span class="value" id="res-deposit"></span>
+                </div>
+                <div class="detail-item">
+                    <span class="label">Vehicle Category</span>
+                    <span class="value" id="res-vehicle-cat">-</span>
+                </div>
+                <div class="detail-item">
+                    <span class="label">Mileage</span>
+                    <span class="value" id="res-mileage">-</span>
+                </div>
+                <div class="detail-item">
+                    <span class="label">Reg No.</span>
+                    <span class="value" id="res-reg-no">-</span>
+                </div>
+                <div class="detail-item">
+                    <span class="label">Auction Date</span>
+                    <span class="value">
+                        <span id="res-date"></span>
+                        <span id="res-remaining-days" style="margin-left: 10px; font-size: 0.85rem; padding: 2px 8px; border-radius: 12px; background: rgba(16, 185, 129, 0.2); color: #10b981;"></span>
+                    </span>
+                </div>
+                <div class="detail-item">
+                    <span class="label">Category Start Date</span>
+                    <span class="value" id="res-start-date"></span>
+                </div>
+                <div class="detail-item">
+                    <span class="label">Starting Bid</span>
+                    <span class="value highlight" id="res-starting-bid"></span>
+                </div>
+            </div>
+            <div class="action-section">
+                <button id="bid-btn" class="btn-bid pulse">Place Bid</button>
+                <button id="cancel-bid-btn" class="btn-cancel">Cancel Bid</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/main.js"></script>
+</body>
+</html>
