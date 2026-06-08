@@ -1,113 +1,142 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
+const mongoose = require('mongoose');
+const axios = require('axios');
+const FormData = require('form-data');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const DB_FILE = path.join(__dirname, 'auction_db.json');
 
+// Environment Variables
+const MONGODB_URI = process.env.MONGODB_URI;
+const IMGBB_API_KEY = process.env.IMGBB_API_KEY;
+
+// Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Set up Multer for file uploads
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        const uploadDir = path.join(__dirname, 'public', 'uploads');
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
-        }
-        cb(null, uploadDir);
-    },
-    filename: function (req, file, cb) {
-        cb(null, Date.now() + path.extname(file.originalname));
-    }
+// Connect to MongoDB
+mongoose.connect(MONGODB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true
+}).then(() => console.log('Connected to MongoDB Atlas'))
+  .catch(err => console.error('MongoDB connection error:', err));
+
+// Define Mongoose Schema
+const applicantSchema = new mongoose.Schema({
+    applicant_id: { type: String, required: true, unique: true },
+    name: String,
+    address: String,
+    refundable_deposit: Number,
+    vehicle_category: String,
+    vehicle_registration_number: String,
+    mileage: Number,
+    vehicle_image: String, // URL from ImgBB
+    auction_date: String,
+    auction_category_start_date: String,
+    starting_bid: Number,
+    created_at: { type: Date, default: Date.now }
 });
-const upload = multer({ storage: storage });
 
-// Initialize database
-if (!fs.existsSync(DB_FILE)) {
-    fs.writeFileSync(DB_FILE, JSON.stringify([]));
+const Applicant = mongoose.model('Applicant', applicantSchema);
+
+// Set up Multer using Memory Storage (does not save to disk)
+const upload = multer({ storage: multer.memoryStorage() });
+
+// Helper function to upload image to ImgBB
+async function uploadToImgBB(fileBuffer, originalName) {
+    try {
+        const formData = new FormData();
+        formData.append('image', fileBuffer.toString('base64'));
+        
+        const response = await axios.post(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, formData, {
+            headers: formData.getHeaders()
+        });
+        
+        if (response.data && response.data.success) {
+            return response.data.data.url; // Returns the permanent URL
+        }
+        throw new Error('ImgBB upload failed');
+    } catch (error) {
+        console.error("ImgBB Error:", error.response ? error.response.data : error.message);
+        throw error;
+    }
 }
-
-// Read database
-const readDB = () => JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-
-// Write to database
-const writeDB = (data) => fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
 
 // API Endpoints
 
 // GET all applicants
-app.get('/api/applicant', (req, res) => {
-    const data = readDB();
-    const id = req.query.id;
-    
-    if (id) {
-        const applicant = data.find(app => app.applicant_id === id);
-        if (applicant) {
-            res.json({ success: true, data: applicant });
+app.get('/api/applicant', async (req, res) => {
+    try {
+        const id = req.query.id;
+        
+        if (id) {
+            const applicant = await Applicant.findOne({ applicant_id: id });
+            if (applicant) {
+                res.json({ success: true, data: applicant });
+            } else {
+                res.status(404).json({ success: false, error: 'Applicant not found' });
+            }
         } else {
-            res.status(404).json({ success: false, error: 'Applicant not found' });
+            const applicants = await Applicant.find().sort({ created_at: -1 });
+            res.json({ success: true, data: applicants });
         }
-    } else {
-        res.json({ success: true, data });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 
 // POST (Create/Update) applicant
-app.post('/api/applicant', upload.single('vehicle_image_file'), (req, res) => {
+app.post('/api/applicant', upload.single('vehicle_image_file'), async (req, res) => {
     try {
-        const data = readDB();
         const applicant_id = req.body.applicant_id;
         
         if (!applicant_id) {
             return res.status(400).json({ success: false, error: 'Applicant ID is required' });
         }
 
-        let vehicle_image = req.body.vehicle_image || '';
+        let vehicle_image_url = req.body.vehicle_image || '';
         
-        // If file uploaded, update the URL path
+        // If a new file is uploaded, send it to ImgBB
         if (req.file) {
-            vehicle_image = '/uploads/' + req.file.filename;
+            vehicle_image_url = await uploadToImgBB(req.file.buffer, req.file.originalname);
         }
 
-        const newApplicant = {
-            id: Date.now().toString(),
+        const dataToSave = {
             applicant_id,
             name: req.body.name || '',
             address: req.body.address || '',
-            refundable_deposit: req.body.refundable_deposit || '',
+            refundable_deposit: req.body.refundable_deposit || 0,
             vehicle_category: req.body.vehicle_category || '',
             vehicle_registration_number: req.body.vehicle_registration_number || '',
-            mileage: req.body.mileage || '',
-            vehicle_image: vehicle_image,
+            mileage: req.body.mileage || 0,
             auction_date: req.body.auction_date || '',
             auction_category_start_date: req.body.auction_category_start_date || '',
-            starting_bid: req.body.starting_bid || '',
-            created_at: new Date().toISOString()
+            starting_bid: req.body.starting_bid || 0
         };
 
-        const existingIndex = data.findIndex(app => app.applicant_id === applicant_id);
-        let action = 'created';
-        
-        if (existingIndex !== -1) {
-            // Keep old image if no new one provided
-            if (!req.file && !req.body.vehicle_image) {
-                newApplicant.vehicle_image = data[existingIndex].vehicle_image;
-            }
-            newApplicant.id = data[existingIndex].id; // Keep original primary key
-            newApplicant.created_at = data[existingIndex].created_at; // Keep original date
-            data[existingIndex] = newApplicant;
-            action = 'updated';
-        } else {
-            data.unshift(newApplicant); // Add to beginning
+        if (vehicle_image_url) {
+            dataToSave.vehicle_image = vehicle_image_url;
         }
 
-        writeDB(data);
+        const existing = await Applicant.findOne({ applicant_id });
+        let action = 'created';
+        
+        if (existing) {
+            // Update existing
+            await Applicant.findOneAndUpdate({ applicant_id }, dataToSave);
+            action = 'updated';
+        } else {
+            // Create new
+            const newApp = new Applicant(dataToSave);
+            await newApp.save();
+        }
+
         res.status(201).json({ success: true, id: applicant_id, action });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
@@ -115,19 +144,17 @@ app.post('/api/applicant', upload.single('vehicle_image_file'), (req, res) => {
 });
 
 // DELETE applicant
-app.delete('/api/applicant', (req, res) => {
+app.delete('/api/applicant', async (req, res) => {
     try {
-        const data = readDB();
         const id = req.query.id;
         
         if (!id) {
             return res.status(400).json({ success: false, error: 'ID is required' });
         }
 
-        const newData = data.filter(app => app.applicant_id !== id);
+        const deleted = await Applicant.findOneAndDelete({ applicant_id: id });
         
-        if (newData.length !== data.length) {
-            writeDB(newData);
+        if (deleted) {
             res.json({ success: true, message: 'Deleted successfully' });
         } else {
             res.status(404).json({ success: false, error: 'Applicant not found' });
@@ -137,7 +164,7 @@ app.delete('/api/applicant', (req, res) => {
     }
 });
 
-// Catch-all route to serve index.html for undefined frontend routes (if needed)
+// Catch-all route to serve index.html for undefined frontend routes
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
